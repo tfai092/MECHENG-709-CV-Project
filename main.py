@@ -30,32 +30,36 @@ for input_dir, set_label in sets:
             print(f"Failed to load {image_name}")
             continue
 
+        # =========================================================
+        # 🔁 EXACT pipeline from first code
+        # =========================================================
+
         # --- Step 1: Grayscale ---
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # --- Step 2: CLAHE (contrast boost) ---
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        enhanced = clahe.apply(gray)
+        # --- Step 2: Contrast ---
+        contrast = cv2.convertScaleAbs(gray, alpha=1.7, beta=0)
 
         # --- Step 3: Blur ---
-        blur = cv2.GaussianBlur(enhanced, (5, 5), 1.5)
+        blur = cv2.GaussianBlur(contrast, (5, 5), 0.7)
 
-        # --- Step 4: Edge detection (NO threshold before this) ---
-        edges = cv2.Canny(blur, 50, 150)
+        # --- Step 4: Black-hat ---
+        vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 35))
+        blackhat = cv2.morphologyEx(blur, cv2.MORPH_BLACKHAT, vertical_kernel)
 
-        # --- Step 5: Morphological cleanup ---
-        kernel = np.ones((3, 3), np.uint8)
-        edges = cv2.morphologyEx(edges, cv2.MORPH_OPEN, kernel)
-        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+        # --- Step 5: Threshold ---
+        _, bh_thresh = cv2.threshold(blackhat, 30, 255, cv2.THRESH_BINARY)
 
-        # --- Step 6: Optional ROI (center strip) ---
-        height, width = edges.shape
-        roi = np.zeros_like(edges)
-        roi[:, width//2 - 80: width//2 + 80] = edges[:, width//2 - 80: width//2 + 80]
+        # --- Step 6: Edge detection ---
+        edges = cv2.Canny(bh_thresh, 50, 150)
+
+        # =========================================================
+        # Everything else EXACTLY as your original second script
+        # =========================================================
 
         # --- Step 7: Hough Line Detection ---
         lines = cv2.HoughLinesP(
-            roi,
+            edges,
             1,
             np.pi / 180,
             threshold=50,
@@ -64,6 +68,7 @@ for input_dir, set_label in sets:
         )
 
         # --- Step 8: Pick best vertical line ---
+        height, width = edges.shape
         x_position = width // 2  # fallback
 
         if lines is not None:
@@ -73,21 +78,20 @@ for input_dir, set_label in sets:
                 x1, y1, x2, y2 = line[0]
                 angle = np.degrees(np.arctan2((y2 - y1), (x2 - x1)))
 
-                if abs(angle) > 80:  # near vertical
+                if abs(angle) > 80:
                     vertical_lines.append(line[0])
 
             if len(vertical_lines) > 0:
-                # Average x position of vertical lines
                 xs = [(l[0] + l[2]) // 2 for l in vertical_lines]
                 x_position = int(np.mean(xs))
 
         # --- Save interim images ---
         base_name = image_name.replace(".jpg", "")
 
-        cv2.imwrite(os.path.join(output_dir, f"{base_name}_B_Gray.jpg"), gray)
-        cv2.imwrite(os.path.join(output_dir, f"{base_name}_B_Enhanced.jpg"), enhanced)
+        cv2.imwrite(os.path.join(output_dir, f"{base_name}_B_Contrast.jpg"), contrast)
+        cv2.imwrite(os.path.join(output_dir, f"{base_name}_B_Blackhat.jpg"), blackhat)
+        cv2.imwrite(os.path.join(output_dir, f"{base_name}_B_Threshold.jpg"), bh_thresh)
         cv2.imwrite(os.path.join(output_dir, f"{base_name}_B_Edges.jpg"), edges)
-        cv2.imwrite(os.path.join(output_dir, f"{base_name}_B_ROI.jpg"), roi)
 
         # --- Draw result ---
         result_img = img.copy()
