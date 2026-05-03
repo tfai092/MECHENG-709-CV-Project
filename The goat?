@@ -16,6 +16,13 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 y_center = 70
 margin = 50
 
+# thresholds per set
+score_thresholds = {
+    "Set 1": 40,
+    "Set 2": 50,
+    "Set 3": 60
+}
+
 # =========================
 # PROCESS EACH SET
 # =========================
@@ -53,19 +60,13 @@ for set_name in sets:
         # =========================
         roi = img[y_center-5:y_center+5, :]
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
         # =========================
-        # PROFILE
+        # SOBEL X (KEY STEP)
         # =========================
-        profile = np.median(blur, axis=0)
-        profile = profile.astype(np.float32)
-
-        # =========================
-        # GRADIENT
-        # =========================
-        grad = np.gradient(profile)
+        sobelx = cv2.Sobel(blur, cv2.CV_64F, 1, 0, ksize=3)
+        sobelx = np.mean(sobelx, axis=0)  # collapse to 1D
 
         # =========================
         # FIND EDGE PAIRS
@@ -75,21 +76,20 @@ for set_name in sets:
 
         for i in range(margin, width - margin - 10):
 
-            # look for left edge (strong negative)
-            if grad[i] < -2:
+            # left edge = strong negative gradient
+            if sobelx[i] < -5:
 
-                for j in range(i+3, min(i+15, width-margin)):
+                for j in range(i+3, min(i+15, width - margin)):
 
-                    # look for right edge (strong positive)
-                    if grad[j] > 2:
+                    # right edge = strong positive gradient
+                    if sobelx[j] > 5:
 
                         gap_width = j - i
 
-                        # expected ~6 px
+                        # enforce weld gap width (~6 px)
                         if 4 <= gap_width <= 10:
 
-                            # score = edge strength
-                            score = abs(grad[i]) + abs(grad[j])
+                            score = abs(sobelx[i]) + abs(sobelx[j])
 
                             if score > best_score:
                                 best_score = score
@@ -98,7 +98,9 @@ for set_name in sets:
         # =========================
         # FINAL DECISION
         # =========================
-        if best_pair is not None and best_score > 5:
+        threshold = score_thresholds[set_name]
+
+        if best_pair is not None and best_score > threshold:
             x_position = int((best_pair[0] + best_pair[1]) / 2)
             valid = 1
         else:
@@ -114,6 +116,23 @@ for set_name in sets:
             cv2.line(result_img, (x_position, 0), (x_position, height), (0, 255, 0), 2)
 
         # =========================
+        # DEBUG: Sobel profile image
+        # =========================
+        sobel_img = np.zeros((200, width), dtype=np.uint8)
+
+        s = sobelx - np.min(sobelx)
+        if np.max(s) != 0:
+            s = s / np.max(s) * 199
+
+        for x in range(width):
+            y = int(s[x])
+            cv2.circle(sobel_img, (x, 199 - y), 1, 255, -1)
+
+        if best_pair is not None:
+            cv2.line(sobel_img, (best_pair[0], 0), (best_pair[0], 199), 255, 1)
+            cv2.line(sobel_img, (best_pair[1], 0), (best_pair[1], 199), 255, 1)
+
+        # =========================
         # SAVE INTERIM
         # =========================
         base_name = image_name.replace(".jpg", "")
@@ -125,18 +144,7 @@ for set_name in sets:
             cv2.line(roi_vis, (x_position, 0), (x_position, roi_large.shape[0]), (0, 255, 0), 2)
 
         cv2.imwrite(os.path.join(interim_path, f"{base_name}_A_WeldGapPosition.jpg"), roi_vis)
-
-        # simple debug profile image
-        profile_img = np.zeros((200, width), dtype=np.uint8)
-        p = profile - np.min(profile)
-        if np.max(p) != 0:
-            p = p / np.max(p) * 199
-
-        for x in range(width):
-            y = int(p[x])
-            cv2.circle(profile_img, (x, 199 - y), 1, 255, -1)
-
-        cv2.imwrite(os.path.join(interim_path, f"{base_name}_B_profile.jpg"), profile_img)
+        cv2.imwrite(os.path.join(interim_path, f"{base_name}_B_sobel.jpg"), sobel_img)
 
         # =========================
         # STORE RESULT
