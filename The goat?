@@ -56,14 +56,14 @@ for set_name in sets:
         height, width = img.shape[:2]
 
         # =========================
-        # ROI
+        # ROI, grey, blur
         # =========================
         roi = img[y_center-5:y_center+5, :]
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
         # =========================
-        # SOBEL X (KEY STEP)
+        # SOBEL X
         # =========================
         sobelx = cv2.Sobel(blur, cv2.CV_64F, 1, 0, ksize=3)
         sobelx = np.mean(sobelx, axis=0)  # collapse to 1D
