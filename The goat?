@@ -1,0 +1,158 @@
+import cv2
+import os
+import numpy as np
+
+# =========================
+# CONFIG
+# =========================
+sets = ["Set 1", "Set 2", "Set 3"]
+base_input_dir = "WeldGapImages"
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# =========================
+# PARAMETERS
+# =========================
+y_center = 70
+margin = 50
+
+# =========================
+# PROCESS EACH SET
+# =========================
+for set_name in sets:
+
+    print(f"\nProcessing {set_name}...")
+
+    input_path = os.path.join(script_dir, base_input_dir, set_name)
+
+    interim_dir = f"InterimResultsOf{set_name.replace(' ', '')}"
+    interim_path = os.path.join(script_dir, interim_dir)
+    os.makedirs(interim_path, exist_ok=True)
+
+    output_csv = f"PositionResultsOf{set_name.replace(' ', '')}.csv"
+    csv_path = os.path.join(script_dir, output_csv)
+
+    results = []
+
+    image_list = sorted(os.listdir(input_path))
+
+    for image_name in image_list:
+        if not image_name.lower().endswith(".jpg"):
+            continue
+
+        img_path = os.path.join(input_path, image_name)
+        img = cv2.imread(img_path)
+
+        if img is None:
+            continue
+
+        height, width = img.shape[:2]
+
+        # =========================
+        # ROI
+        # =========================
+        roi = img[y_center-5:y_center+5, :]
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+
+        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        # =========================
+        # PROFILE
+        # =========================
+        profile = np.median(blur, axis=0)
+        profile = profile.astype(np.float32)
+
+        # =========================
+        # GRADIENT
+        # =========================
+        grad = np.gradient(profile)
+
+        # =========================
+        # FIND EDGE PAIRS
+        # =========================
+        best_pair = None
+        best_score = 0
+
+        for i in range(margin, width - margin - 10):
+
+            # look for left edge (strong negative)
+            if grad[i] < -2:
+
+                for j in range(i+3, min(i+15, width-margin)):
+
+                    # look for right edge (strong positive)
+                    if grad[j] > 2:
+
+                        gap_width = j - i
+
+                        # expected ~6 px
+                        if 4 <= gap_width <= 10:
+
+                            # score = edge strength
+                            score = abs(grad[i]) + abs(grad[j])
+
+                            if score > best_score:
+                                best_score = score
+                                best_pair = (i, j)
+
+        # =========================
+        # FINAL DECISION
+        # =========================
+        if best_pair is not None and best_score > 5:
+            x_position = int((best_pair[0] + best_pair[1]) / 2)
+            valid = 1
+        else:
+            x_position = -1
+            valid = 0
+
+        # =========================
+        # VISUALISATION
+        # =========================
+        result_img = img.copy()
+
+        if valid == 1:
+            cv2.line(result_img, (x_position, 0), (x_position, height), (0, 255, 0), 2)
+
+        # =========================
+        # SAVE INTERIM
+        # =========================
+        base_name = image_name.replace(".jpg", "")
+
+        roi_large = img[y_center-20:y_center+20, :]
+        roi_vis = roi_large.copy()
+
+        if valid == 1:
+            cv2.line(roi_vis, (x_position, 0), (x_position, roi_large.shape[0]), (0, 255, 0), 2)
+
+        cv2.imwrite(os.path.join(interim_path, f"{base_name}_A_WeldGapPosition.jpg"), roi_vis)
+
+        # simple debug profile image
+        profile_img = np.zeros((200, width), dtype=np.uint8)
+        p = profile - np.min(profile)
+        if np.max(p) != 0:
+            p = p / np.max(p) * 199
+
+        for x in range(width):
+            y = int(p[x])
+            cv2.circle(profile_img, (x, 199 - y), 1, 255, -1)
+
+        cv2.imwrite(os.path.join(interim_path, f"{base_name}_B_profile.jpg"), profile_img)
+
+        # =========================
+        # STORE RESULT
+        # =========================
+        results.append(f"{image_name}, {x_position}, {valid}")
+
+        print(f"{set_name} | {image_name} → x: {x_position}, valid: {valid}, score: {best_score:.2f}")
+
+    # =========================
+    # SAVE CSV
+    # =========================
+    with open(csv_path, "w") as f:
+        f.write("ImageName, Weld gap position in pixel/integer , Weld gap position valid? 0 = false, 1 = true\n")
+        for line in results:
+            f.write(line + "\n")
+
+    print(f"{set_name} complete.")
+
+print("\nAll sets processed.")
