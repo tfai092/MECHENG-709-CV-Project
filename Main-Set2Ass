@@ -1,0 +1,159 @@
+import cv2
+import os
+import numpy as np
+
+# =========================
+# CONFIG
+# =========================
+sets = ["Set 1", "Set 2", "Set 3"]
+
+base_input_dir = "WeldGapImages"
+
+# Paths
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# =========================
+# PARAMETERS
+# =========================
+y_center = 70
+roi_half_height = 5
+
+# You can tune per set if needed
+contrast_thresholds = {
+    "Set 1": 5,
+    "Set 2": 5,
+    "Set 3": 8   # stricter (important)
+}
+
+# =========================
+# PROCESS EACH SET
+# =========================
+for set_name in sets:
+
+    print(f"\nProcessing {set_name}...")
+
+    input_path = os.path.join(script_dir, base_input_dir, set_name)
+
+    interim_dir = f"InterimResultsOf{set_name.replace(' ', '')}"
+    interim_path = os.path.join(script_dir, interim_dir)
+    os.makedirs(interim_path, exist_ok=True)
+
+    output_csv = f"PositionResultsOf{set_name.replace(' ', '')}.csv"
+    csv_path = os.path.join(script_dir, output_csv)
+
+    results = []
+
+    image_list = sorted(os.listdir(input_path))
+
+    for image_name in image_list:
+        if not image_name.lower().endswith(".jpg"):
+            continue
+
+        img_path = os.path.join(input_path, image_name)
+        img = cv2.imread(img_path)
+
+        if img is None:
+            print(f"Failed to load {image_name}")
+            continue
+
+        height, width = img.shape[:2]
+
+        # =========================
+        # ROI + PROCESSING
+        # =========================
+        roi = img[y_center-roi_half_height:y_center+roi_half_height, :]
+
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+
+        clahe = cv2.createCLAHE(clipLimit=3, tileGridSize=(16, 16))
+        enhanced = clahe.apply(gray)
+
+        blur = cv2.GaussianBlur(enhanced, (5, 5), 0)
+
+        profile = np.mean(blur, axis=0)
+        profile = profile - np.mean(profile)
+
+        profile_smooth = cv2.GaussianBlur(
+            profile.reshape(1, -1), (1, 9), 0
+        ).flatten()
+
+        # =========================
+        # DETECT GAP
+        # =========================
+        x_candidate = np.argmin(profile_smooth)
+
+        window = 10
+        left = max(0, x_candidate - window)
+        right = min(len(profile_smooth), x_candidate + window)
+
+        local_avg = np.mean(profile_smooth[left:right])
+        contrast = local_avg - profile_smooth[x_candidate]
+
+        threshold = contrast_thresholds[set_name]
+
+        if contrast > threshold:
+            x_position = int(x_candidate)
+            valid = 1
+        else:
+            x_position = -1
+            valid = 0
+
+        # =========================
+        # VISUALISATION (ROI)
+        # =========================
+        line_vis = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+        if valid == 1:
+            cv2.line(line_vis, (x_candidate, 0), (x_candidate, roi.shape[0]), (0, 255, 0), 2)
+        else:
+            cv2.line(line_vis, (roi.shape[1]//2, 0), (roi.shape[1]//2, roi.shape[0]), (0, 0, 255), 2)
+
+        # =========================
+        # PROFILE IMAGE
+        # =========================
+        profile_img = np.zeros((200, width), dtype=np.uint8)
+
+        p = profile_smooth - np.min(profile_smooth)
+        if np.max(p) != 0:
+            p = p / np.max(p) * 199
+
+        for x in range(width):
+            y = int(p[x])
+            cv2.circle(profile_img, (x, 199 - y), 1, 255, -1)
+
+        cv2.line(profile_img, (x_candidate, 0), (x_candidate, 199), 255, 1)
+
+        # =========================
+        # SAVE INTERIM RESULTS
+        # =========================
+        base_name = image_name.replace(".jpg", "")
+
+        # Cropped ROI (bigger for clarity)
+        roi_large = img[y_center-20:y_center+20, :]
+        roi_large_vis = roi_large.copy()
+
+        if valid == 1:
+            cv2.line(roi_large_vis, (x_position, 0), (x_position, roi_large.shape[0]), (0, 255, 0), 2)
+
+        cv2.imwrite(os.path.join(interim_path, f"{base_name}_A_WeldGapPosition.jpg"), roi_large_vis)
+
+        # 2–3 interim images
+        cv2.imwrite(os.path.join(interim_path, f"{base_name}_B_gray.jpg"), gray)
+        cv2.imwrite(os.path.join(interim_path, f"{base_name}_B_profile.jpg"), profile_img)
+
+        # =========================
+        # STORE RESULT
+        # =========================
+        results.append(f"{image_name}, {x_position}, {valid}")
+
+        print(f"{set_name} | {image_name} → x: {x_position}, valid: {valid}, contrast: {contrast:.2f}")
+
+    # =========================
+    # SAVE CSV
+    # =========================
+    with open(csv_path, "w") as f:
+        f.write("ImageName, Weld gap position in pixel/integer , Weld gap position valid? 0 = false, 1 = true\n")
+        for line in results:
+            f.write(line + "\n")
+
+    print(f"{set_name} complete. CSV saved: {csv_path}")
