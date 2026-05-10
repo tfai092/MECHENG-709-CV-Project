@@ -1,0 +1,92 @@
+DEFINE sets = ["Set 1", "Set 2", "Set 3"]
+DEFINE score_thresholds for each set
+
+FOR each set in sets:
+
+    LOAD all images in the set
+
+    FOR each image:
+
+        READ image
+
+        IF image is invalid:
+            SKIP
+
+        GET image width and height
+
+        -------------------------
+        STEP 1: REGION OF INTEREST
+        -------------------------
+        EXTRACT horizontal strip around y_center
+
+        -------------------------
+        STEP 2: PREPROCESSING
+        -------------------------
+        CONVERT ROI to grayscale
+        APPLY Gaussian blur to reduce noise
+
+        -------------------------
+        STEP 3: EDGE DETECTION
+        -------------------------
+        APPLY Sobel filter in x-direction
+        AVERAGE vertically → convert to 1D signal
+
+        -------------------------
+        STEP 4: FIND EDGE PAIRS
+        -------------------------
+        INITIALISE best_score = 0
+        INITIALISE best_pair = NONE
+
+        FOR each position i across width:
+
+            IF gradient at i is strongly negative:
+                (candidate left edge)
+
+                FOR positions j to the right of i:
+
+                    IF gradient at j is strongly positive:
+                        (candidate right edge)
+
+                        COMPUTE gap_width = j - i
+
+                        IF gap_width is within expected range:
+
+                            COMPUTE score =
+                                |gradient at i| + |gradient at j|
+
+                            IF score > best_score:
+                                UPDATE best_score
+                                STORE pair (i, j)
+
+        -------------------------
+        STEP 5: VALIDATE DETECTION
+        -------------------------
+        GET threshold for current set
+
+        IF best_pair exists AND best_score > threshold:
+            COMPUTE weld gap center position
+            SET valid = 1
+        ELSE:
+            SET position = -1
+            SET valid = 0
+
+        -------------------------
+        STEP 6: VISUALISATION
+        -------------------------
+        IF valid:
+            DRAW vertical line at detected position
+
+        GENERATE Sobel profile image for debugging
+
+        -------------------------
+        STEP 7: SAVE RESULTS
+        -------------------------
+        SAVE visualisation images
+        STORE (image name, position, validity)
+
+    -------------------------
+    STEP 8: EXPORT CSV
+    -------------------------
+    WRITE all results to CSV file
+
+PRINT "All sets processed"
