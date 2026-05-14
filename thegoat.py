@@ -6,7 +6,7 @@ import numpy as np
 # CONFIG
 # =========================
 # SET TO FALSE BEFORE FINAL SUBMISSION TO OBEY THE BRIEF'S ROI RULE
-DEBUG_FULL_IMAGE = True  
+DEBUG_FULL_IMAGE = False  
 
 sets = ["Set 1", "Set 2", "Set 3"]
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +22,7 @@ tolerance = 3 # The strict +/- 3 pixel tolerance for marking
 score_thresholds = {
     "Set 1": 40,
     "Set 2": 50,
-    "Set 3": 60
+    "Set 3": 200
 }
 
 # =========================
@@ -161,11 +161,13 @@ for set_name in sets:
         # SAVE IMAGES (Strict Naming)
         # =========================
         base_name = image_name.rsplit('.', 1)[0]
+        base_name = base_name[0].upper() + base_name[1:]
         
         cv2.imwrite(os.path.join(interim_path, f"{base_name}_A_WeldGapPosition.JPG"), vis_img)
-        cv2.imwrite(os.path.join(interim_path, f"{base_name}_B_InterimResult1.jpg"), sobel_img)
+        cv2.imwrite(os.path.join(interim_path, f"{base_name}_B_InterimResult1.jpg"), gray)
         cv2.imwrite(os.path.join(interim_path, f"{base_name}_B_InterimResult2.jpg"), blur)
-
+        cv2.imwrite(os.path.join(interim_path, f"{base_name}_B_InterimResult3.jpg"), sobel_img)
+        
         # =========================
         # STORE RESULT
         # =========================
@@ -175,6 +177,6 @@ for set_name in sets:
     # SAVE CSV 
     # =========================
     with open(csv_path, "w") as f:
-        f.write("ImageName, Weld gap position in pixel/integer, Weld gap position valid? 0=false, 1=true\n")
+        f.write('ImageName,Weld gap position in pixel/integer,"Weld gap position valid? 0=false, 1=true"\n')
         for line in results:
             f.write(line + "\n")
