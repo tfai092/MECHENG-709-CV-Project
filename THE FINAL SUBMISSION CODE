@@ -165,8 +165,8 @@ for set_name in sets:
         
         cv2.imwrite(os.path.join(interim_path, f"{base_name}_A_WeldGapPosition.JPG"), vis_img)
         cv2.imwrite(os.path.join(interim_path, f"{base_name}_B_InterimResult1.jpg"), gray)
-        cv2.imwrite(os.path.join(interim_path, f"{base_name}_C_InterimResult2.jpg"), blur)
-        cv2.imwrite(os.path.join(interim_path, f"{base_name}_D_InterimResult3.jpg"), sobel_img)
+        cv2.imwrite(os.path.join(interim_path, f"{base_name}_B_InterimResult2.jpg"), blur)
+        cv2.imwrite(os.path.join(interim_path, f"{base_name}_B_InterimResult3.jpg"), sobel_img)
         
         # =========================
         # STORE RESULT
