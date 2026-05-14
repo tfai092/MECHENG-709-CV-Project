@@ -20,9 +20,9 @@ tolerance = 3 # The strict +/- 3 pixel tolerance for marking
 
 # thresholds per set
 score_thresholds = {
-    "Set 1": 40,
-    "Set 2": 50,
-    "Set 3": 200
+    "Set 1": 200,
+    "Set 2": 200,
+    "Set 3": 251
 }
 
 # =========================
@@ -84,7 +84,7 @@ for set_name in sets:
                 for j in range(i+3, min(i+15, width - margin)):
                     if sobelx[j] > 5: # right edge
                         gap_width = j - i
-                        if 4 <= gap_width <= 10:
+                        if 5 <= gap_width <= 8:
                             score = abs(sobelx[i]) + abs(sobelx[j])
                             if score > best_score:
                                 best_score = score
